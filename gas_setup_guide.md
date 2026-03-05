@@ -17,7 +17,6 @@
 
 ```javascript
 function doPost(e) {
-  // CORS対応（異なるドメインからのリクエストを許可）
   var headers = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
@@ -25,14 +24,18 @@ function doPost(e) {
   };
 
   try {
-    // リクエストから送られてきたJSONデータをパース
     var data = JSON.parse(e.postData.contents);
-    
-    // スプレッドシートの取得（現在アクティブなスプレッドシートの最初のシート）
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
     
-    // データをシートの最終行に追加（順番はCSVと同じ）
-    // [資料タイトル, 種類, カテゴリ, URL, 説明]
+    // アクションが 'delete' の場合
+    if (data.action === 'delete') {
+      // 渡された行番号を削除する
+      sheet.deleteRow(data.rowNumber);
+      return ContentService.createTextOutput(JSON.stringify({"status": "success", "action": "deleted"}))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // アクションが 'delete' 以外（デフォルトのアカ追加処理）の場合
     sheet.appendRow([
       data.title,
       data.type,
@@ -41,26 +44,23 @@ function doPost(e) {
       data.description
     ]);
 
-    // 成功レスポンスを返す
     return ContentService.createTextOutput(JSON.stringify({"status": "success"}))
       .setMimeType(ContentService.MimeType.JSON);
 
   } catch (error) {
-    // エラーレスポンスを返す
     return ContentService.createTextOutput(JSON.stringify({"status": "error", "message": error.toString()}))
       .setMimeType(ContentService.MimeType.JSON);
   }
 }
 
-// OPTIONSリクエスト（CORSのプレフライト）用の処理
 function doOptions(e) {
-  var headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
   return ContentService.createTextOutput("")
-    .setMimeType(ContentService.MimeType.TEXT);
+    .setMimeType(ContentService.MimeType.TEXT)
+    .setHeaders({
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type"
+    });
 }
 ```
 

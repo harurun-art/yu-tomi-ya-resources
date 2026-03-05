@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Archive, FileText, Image as ImageIcon, Layout, Box, Loader2, AlertCircle, Plus, X } from 'lucide-react'
+import { Search, Archive, FileText, Image as ImageIcon, Layout, Box, Loader2, AlertCircle, Plus, X, Trash2 } from 'lucide-react'
 import Papa from 'papaparse'
 
 // CSV_URL for fetching data
@@ -146,6 +146,45 @@ function App() {
     }
   };
 
+  const handleDelete = async (e, id, title) => {
+    e.preventDefault(); // Prevent link navigation
+    e.stopPropagation();
+
+    if (!window.confirm(`「${title}」を削除してもよろしいですか？\nこの操作は取り消せません。`)) {
+      return;
+    }
+
+    if (!GAS_URL) {
+      alert('GASのURLが設定されていません。削除できません。');
+      return;
+    }
+
+    setIsSubmitting(true);
+    // In our CSV, data rows start at index 0, which corresponds to row 2 in the Spreadsheet (since row 1 is header).
+    // So rowNumber = index + 2. The `id` we set is exactly the array index.
+    const rowNumber = id + 2;
+
+    try {
+      const response = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'delete', rowNumber })
+      });
+
+      const result = await response.json();
+
+      if (result.status === 'success') {
+        fetchData(); // Refresh the list
+      } else {
+        alert('削除に失敗しました: ' + (result.message || '不明なエラー'));
+      }
+    } catch (err) {
+      alert('通信エラーが発生しました: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <>
       <header className="app-header">
@@ -214,10 +253,20 @@ function App() {
                 filteredData.map(item => (
                   <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer" className="resource-card">
                     <div className="card-header">
-                      <div className="card-icon">
-                        {getIconForType(item.type)}
+                      <div className="card-header-left" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div className="card-icon">
+                          {getIconForType(item.type)}
+                        </div>
+                        <span className="card-type">{item.type}</span>
                       </div>
-                      <span className="card-type">{item.type}</span>
+                      <button
+                        className="delete-btn"
+                        onClick={(e) => handleDelete(e, item.id, item.title)}
+                        title="この資料を削除"
+                        disabled={isSubmitting}
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </div>
                     <div className="card-content">
                       <h3 className="card-title">{item.title}</h3>
