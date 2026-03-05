@@ -76,7 +76,7 @@ function App() {
             type: row['種類'] || row.type || 'Document',
             category: row['カテゴリ'] || row.category || 'その他',
             url: row['URL'] || row.url || '#',
-            description: row['説明'] || row.description || ''
+            description: row['説明'] || row['説明（簡単にどんなものなのか）'] || row.description || ''
           }));
           setData(parsedData);
           setLoading(false);
@@ -270,7 +270,7 @@ function App() {
                     </div>
                     <div className="card-content">
                       <h3 className="card-title">{item.title}</h3>
-                      <p className="card-description">{item.description}</p>
+                      {item.description && <p className="card-description">{item.description}</p>}
                     </div>
                   </a>
                 ))
