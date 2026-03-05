@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Search, Archive, FileText, Image as ImageIcon, Layout, Box, Loader2, AlertCircle } from 'lucide-react'
+import { Search, Archive, FileText, Image as ImageIcon, Layout, Box, Loader2, AlertCircle, Plus, X } from 'lucide-react'
 import Papa from 'papaparse'
 
-// このURLをGoogleスプレッドシートの「ウェブに公開(CSV)」URLに置き換えます
+// CSV_URL for fetching data
 const CSV_URL = import.meta.env.VITE_GOOGLE_SHEET_CSV_URL || '';
+// GAS_URL for posting data
+const GAS_URL = import.meta.env.VITE_GAS_API_URL || '';
 
 const MOCK_DATA = [
   { id: 1, title: '令和6年度 班構成・役割分担表', type: 'Spreadsheet', category: '管理', url: '#', description: '今年度の班員リストと各係の分担まとめです。' },
@@ -14,6 +16,7 @@ const MOCK_DATA = [
 ];
 
 const CATEGORIES = ['すべて', '管理', '企画', '広報', '技術'];
+const RESOURCE_TYPES = ['Document', 'Spreadsheet', 'Canva', 'PDF', 'Image'];
 
 function getIconForType(type) {
   switch (String(type).toLowerCase()) {
@@ -34,48 +37,60 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('すべて');
 
-  useEffect(() => {
-    async function fetchData() {
-      if (!CSV_URL) {
-        // 設定されていない場合はモックデータを表示してテストできるようにする
-        console.log('CSV_URL is not set, using mock data.');
-        setData(MOCK_DATA);
-        setLoading(false);
-        return;
-      }
+  // Add Resource Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+  const [formData, setFormData] = useState({
+    title: '',
+    type: 'Document',
+    category: '管理',
+    url: '',
+    description: ''
+  });
 
-      try {
-        Papa.parse(CSV_URL, {
-          download: true,
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            if (results.errors.length > 0) {
-              console.error('CSV Parsing Errors:', results.errors);
-            }
-            // スプレッドシートの列名（title, type, category, url, description）をマッピング
-            const parsedData = results.data.map((row, index) => ({
-              id: index,
-              title: row['資料タイトル'] || row.title || row['タイトル'] || '無題の資料',
-              type: row['種類'] || row.type || 'Document',
-              category: row['カテゴリ'] || row.category || 'その他',
-              url: row['URL'] || row.url || '#',
-              description: row['説明'] || row.description || ''
-            }));
-            setData(parsedData);
-            setLoading(false);
-          },
-          error: (error) => {
-            console.error('Error fetching CSV:', error);
-            setError('データの読み込みに失敗しました。');
-            setLoading(false);
-          }
-        });
-      } catch (err) {
-        setError(err.message);
-        setLoading(false);
-      }
+  const fetchData = async () => {
+    setLoading(true);
+    if (!CSV_URL) {
+      console.log('CSV_URL is not set, using mock data.');
+      setData(MOCK_DATA);
+      setLoading(false);
+      return;
     }
+
+    try {
+      Papa.parse(CSV_URL, {
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          if (results.errors.length > 0) {
+            console.error('CSV Parsing Errors:', results.errors);
+          }
+          const parsedData = results.data.map((row, index) => ({
+            id: index,
+            title: row['資料タイトル'] || row.title || row['タイトル'] || '無題の資料',
+            type: row['種類'] || row.type || 'Document',
+            category: row['カテゴリ'] || row.category || 'その他',
+            url: row['URL'] || row.url || '#',
+            description: row['説明'] || row.description || ''
+          }));
+          setData(parsedData);
+          setLoading(false);
+        },
+        error: (error) => {
+          console.error('Error fetching CSV:', error);
+          setError('データの読み込みに失敗しました。');
+          setLoading(false);
+        }
+      });
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchData();
   }, []);
 
@@ -87,6 +102,47 @@ function App() {
     return matchesSearch && matchesCategory;
   });
 
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitError(null);
+    setIsSubmitting(true);
+
+    if (!GAS_URL) {
+      setSubmitError('GASのURLが設定されていません。環境変数 VITE_GAS_API_URL を確認してください。');
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(GAS_URL, {
+        method: 'POST',
+        // 'text/plain' is often needed for GAS CORS to prevent preflight if not fully configured
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(formData)
+      });
+
+      const result = await response.json();
+
+      if (result.status === 'success') {
+        setIsModalOpen(false);
+        setFormData({ title: '', type: 'Document', category: '管理', url: '', description: '' });
+        // Refresh data
+        fetchData();
+      } else {
+        setSubmitError(result.message || '追加に失敗しました。');
+      }
+    } catch (err) {
+      setSubmitError('通信エラーが発生しました: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <>
       <header className="app-header">
@@ -94,6 +150,12 @@ function App() {
           <div className="app-logo">
             <Archive size={28} />
             資料保管所
+          </div>
+          <div className="header-actions">
+            <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
+              <Plus size={20} />
+              資料を追加
+            </button>
           </div>
         </div>
       </header>
@@ -172,6 +234,97 @@ function App() {
 
         </div>
       </main>
+
+      {/* Add Resource Modal */}
+      {isModalOpen && (
+        <div className="modal-overlay" onClick={() => !isSubmitting && setIsModalOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setIsModalOpen(false)} disabled={isSubmitting}>
+              <X size={24} />
+            </button>
+            <h2 className="modal-title">新しい資料を追加</h2>
+
+            {submitError && (
+              <div style={{ color: 'red', marginBottom: '1rem', padding: '0.75rem', backgroundColor: '#fee2e2', borderRadius: '8px' }}>
+                {submitError}
+              </div>
+            )}
+
+            <form onSubmit={handleAddSubmit}>
+              <div className="form-group">
+                <label className="form-label">資料タイトル <span style={{ color: 'red' }}>*</span></label>
+                <input
+                  type="text"
+                  name="title"
+                  required
+                  className="form-input"
+                  value={formData.title}
+                  onChange={handleInputChange}
+                  placeholder="例: 新歓用チラシデザイン（完成版）"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">URL <span style={{ color: 'red' }}>*</span></label>
+                <input
+                  type="url"
+                  name="url"
+                  required
+                  className="form-input"
+                  value={formData.url}
+                  onChange={handleInputChange}
+                  placeholder="例: https://docs.google.com/..."
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div className="form-group">
+                  <label className="form-label">資料の種類</label>
+                  <select
+                    name="type"
+                    className="form-select"
+                    value={formData.type}
+                    onChange={handleInputChange}
+                  >
+                    {RESOURCE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">カテゴリ</label>
+                  <select
+                    name="category"
+                    className="form-select"
+                    value={formData.category}
+                    onChange={handleInputChange}
+                  >
+                    {CATEGORIES.filter(c => c !== 'すべて').map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">説明 (任意)</label>
+                <textarea
+                  name="description"
+                  className="form-textarea"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  placeholder="資料の簡単な説明を記載してください"
+                />
+              </div>
+
+              <div className="form-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)} disabled={isSubmitting}>キャンセル</button>
+                <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+                  {isSubmitting ? <Loader2 size={20} className="spin" /> : <Plus size={20} />}
+                  追加する
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Simple global style for spinner */}
       <style>{`
