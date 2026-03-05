@@ -16,15 +16,18 @@ const MOCK_DATA = [
 ];
 
 const CATEGORIES = ['すべて', '管理', '企画', '広報', '技術'];
-const RESOURCE_TYPES = ['Document', 'Spreadsheet', 'Canva', 'PDF', 'Image'];
+const RESOURCE_TYPES = ['ドキュメント', 'シート', 'Canva', 'PDF', '画像'];
 
 function getIconForType(type) {
   switch (String(type).toLowerCase()) {
-    case 'document': return <FileText size={24} />;
-    case 'spreadsheet': return <Layout size={24} />;
+    case 'document':
+    case 'ドキュメント': return <FileText size={24} />;
+    case 'spreadsheet':
+    case 'シート': return <Layout size={24} />;
     case 'canva': return <Box size={24} color="#00C4CC" />;
     case 'pdf': return <FileText size={24} color="#F40F02" />;
-    case 'image': return <ImageIcon size={24} />;
+    case 'image':
+    case '画像': return <ImageIcon size={24} />;
     default: return <FileText size={24} />;
   }
 }
@@ -43,7 +46,7 @@ function App() {
   const [submitError, setSubmitError] = useState(null);
   const [formData, setFormData] = useState({
     title: '',
-    type: 'Document',
+    type: 'ドキュメント',
     category: '管理',
     url: '',
     description: ''
@@ -130,7 +133,7 @@ function App() {
 
       if (result.status === 'success') {
         setIsModalOpen(false);
-        setFormData({ title: '', type: 'Document', category: '管理', url: '', description: '' });
+        setFormData({ title: '', type: 'ドキュメント', category: '管理', url: '', description: '' });
         // Refresh data
         fetchData();
       } else {
