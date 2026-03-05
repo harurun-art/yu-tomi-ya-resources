@@ -16,7 +16,7 @@ const MOCK_DATA = [
 ];
 
 const CATEGORIES = ['すべて', '管理', '企画', '広報', '技術'];
-const RESOURCE_TYPES = ['ドキュメント', 'シート', 'Canva', 'PDF', '画像'];
+const RESOURCE_TYPES = ['ドキュメント', 'シート', 'Canva', 'PDF', '画像', 'その他'];
 
 function getIconForType(type) {
   switch (String(type).toLowerCase()) {
