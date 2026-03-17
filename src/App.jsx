@@ -3,6 +3,7 @@ import Navigation from './components/Navigation';
 import DashboardPage from './pages/DashboardPage';
 import ResourcesPage from './pages/ResourcesPage';
 import ProgressPage from './pages/ProgressPage';
+import ProjectsPage from './pages/ProjectsPage';
 import CalendarPage from './pages/CalendarPage';
 import MembersPage from './pages/MembersPage';
 import AssistantPage from './pages/AssistantPage';
@@ -26,6 +27,7 @@ function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/resources" element={<ResourcesPage />} />
           <Route path="/progress" element={<ProgressPage />} />
+          <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/members" element={<MembersPage />} />
           <Route path="/assistant" element={<AssistantPage />} />

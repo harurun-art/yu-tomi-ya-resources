@@ -1,12 +1,13 @@
 import { NavLink } from 'react-router-dom';
-import { Home, Archive, CheckSquare, Calendar, Users, MessageCircle } from 'lucide-react';
+import { Home, Archive, CheckSquare, Target, Calendar, Users, MessageCircle } from 'lucide-react';
 import './Navigation.css';
 
 function Navigation() {
   const navItems = [
     { to: '/', icon: <Home size={20} />, label: 'Dashboard' },
     { to: '/resources', icon: <Archive size={20} />, label: '資料アーカイブ' },
-    { to: '/progress', icon: <CheckSquare size={20} />, label: '進捗確認' },
+    { to: '/progress', icon: <CheckSquare size={20} />, label: 'タスク進捗' },
+    { to: '/projects', icon: <Target size={20} />, label: '企画進捗' },
     { to: '/calendar', icon: <Calendar size={20} />, label: 'スケジュール' },
     { to: '/members', icon: <Users size={20} />, label: 'メンバー' },
     { to: '/assistant', icon: <MessageCircle size={20} />, label: 'AIアシスタント' },

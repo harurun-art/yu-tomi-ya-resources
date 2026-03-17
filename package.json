@@ -13,6 +13,7 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.577.0",
     "papaparse": "^5.5.3",

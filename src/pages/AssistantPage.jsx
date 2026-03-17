@@ -1,28 +1,30 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, Send, Bot, User } from 'lucide-react';
 
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { sheetApi } from '../api/sheetApi';
+
+// The API Key will be provided via environment variables
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+const genAI = new GoogleGenerativeAI(API_KEY);
+
 const INITIAL_MESSAGES = [
-  { id: 1, sender: 'bot', text: 'こんにちは！新規企画班のAIサポートボットです。「申請の仕方がわからない」「ミーティングルームの予約方法は？」など、気軽にご質問ください！' }
+  { id: 1, sender: 'bot', text: 'こんにちは！新規企画班のAIサポートボットです。スケジュールやタスク、企画の進捗状況などを学習済みです！何でも質問してください。' }
 ];
 
-// Simple hardcoded responses for demo purposes
-const getBotResponse = (input) => {
-  const text = input.toLowerCase();
-  if (text.includes('申請') || text.includes('フォーム')) {
-    return '企画の申請については、Dashboardの「クイックアクセス」から「企画書フォーマット」をダウンロードし、記入後に班長までメールで送付してください。';
-  } else if (text.includes('鍵') || text.includes('部室')) {
-    return '部室の鍵は学生課で学生証を提示して借りることができます。使用後は必ず施錠して返却してください。';
-  } else if (text.includes('会議') || text.includes('ミーティング')) {
-    return '定例会議は毎週木曜の19時から部室で行われています。直近のスケジュールは「Calendar」タブから確認できますよ。';
-  } else {
-    return 'ご質問ありがとうございます！現状のボットではお答えできない内容のようなので、後ほど担当の鈴木（suzuki@example.com）あてに直接お問い合わせをお願いできますでしょうか？';
-  }
+// Helper to format sheet data to text
+const formatContext = (name, data) => {
+  if (!data || data.length === 0) return `${name}: データなし\n`;
+  const textRules = data.map(item => JSON.stringify(item)).join('\n');
+  return `=== ${name} ===\n${textRules}\n\n`;
 };
 
 function AssistantPage() {
   const [messages, setMessages] = useState(INITIAL_MESSAGES);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [systemContext, setSystemContext] = useState('ローディング中...');
+  const [isContextLoaded, setIsContextLoaded] = useState(false);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -33,22 +35,76 @@ function AssistantPage() {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  const handleSend = (e) => {
+  useEffect(() => {
+    // Fetch all context data when standard component mounts
+    const loadContext = async () => {
+      try {
+        const [members, tasks, events, projects, goals] = await Promise.all([
+          sheetApi.read('Members'),
+          sheetApi.read('Tasks'),
+          sheetApi.read('Events'),
+          sheetApi.read('Projects'),
+          sheetApi.read('Goals')
+        ]);
+        
+        const contextStr = `
+あなたは「新規企画班」の優秀なAIアシスタントです。
+以下の現在のプロジェクト状況（JSONデータ）を把握した上で、班員からの質問に優しく、正確に答えてください。
+推測ではなく、提供されたデータに基づいて答えてください。データにないことは「現在のデータにはありません」と正直に答えてください。
+
+${formatContext('メンバー', members)}
+${formatContext('タスク進捗', tasks)}
+${formatContext('企画進捗', projects)}
+${formatContext('スケジュール', events)}
+${formatContext('重点目標', goals)}
+`;
+        setSystemContext(contextStr);
+        setIsContextLoaded(true);
+      } catch (err) {
+        console.error("Failed to load context:", err);
+        setSystemContext('エラー: データの読み込みに失敗しました。');
+      }
+    };
+    
+    loadContext();
+  }, []);
+
+  const handleSend = async (e) => {
     e.preventDefault();
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || !isContextLoaded) return;
+
+    if (!API_KEY) {
+      alert("エラー: Gemini APIキーが設定されていません (VITE_GEMINI_API_KEY)");
+      return;
+    }
 
     const userMsg = { id: Date.now(), sender: 'user', text: inputValue };
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
     setIsTyping(true);
 
-    // Simulate network delay
-    setTimeout(() => {
-      const botResponseText = getBotResponse(userMsg.text);
-      const botMsg = { id: Date.now() + 1, sender: 'bot', text: botResponseText };
+    try {
+      // Build previous message history for context
+      const historyMsg = messages.map(m => m.sender === 'user' ? `User: ${m.text}` : `Assistant: ${m.text}`).join('\n');
+      
+      const prompt = `${systemContext}\n\n=== これまでの会話 ===\n${historyMsg}\n\nUser: ${userMsg.text}\nAssistant:`;
+
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text();
+      
+      // Remove any trailing or leading assistant prefixes if the model added them
+      text = text.replace(/^Assistant:\s*/i, '').trim();
+
+      const botMsg = { id: Date.now() + 1, sender: 'bot', text: text };
       setMessages(prev => [...prev, botMsg]);
+    } catch (error) {
+      console.error('Gemini API Error:', error);
+      setMessages(prev => [...prev, { id: Date.now() + 1, sender: 'bot', text: '申し訳ありません、APIリクエスト中にエラーが発生しました。しばらく経ってから再度お試しください。' }]);
+    } finally {
       setIsTyping(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -58,6 +114,7 @@ function AssistantPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', flexShrink: 0 }}>
           <MessageCircle size={28} color="var(--color-primary)" />
           <h1 style={{ margin: 0, fontSize: '1.75rem' }}>AI アシスタント</h1>
+          {!isContextLoaded && <span style={{ fontSize: '0.875rem', color: 'var(--color-text-light)', marginLeft: '1rem' }}>連携データを読み込み中...</span>}
         </div>
 
         {/* Chat Container */}
@@ -148,13 +205,13 @@ function AssistantPage() {
                 fontFamily: 'inherit',
                 fontSize: '1rem'
               }}
-              disabled={isTyping}
+              disabled={isTyping || !isContextLoaded}
             />
             <button 
               type="submit" 
               className="btn btn-primary" 
               style={{ borderRadius: '999px', width: '48px', height: '48px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              disabled={!inputValue.trim() || isTyping}
+              disabled={!inputValue.trim() || isTyping || !isContextLoaded}
             >
               <Send size={20} />
             </button>

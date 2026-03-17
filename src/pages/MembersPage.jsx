@@ -1,15 +1,41 @@
 import React from 'react';
 import { Users, Mail, Phone, Tag } from 'lucide-react';
 
-const MOCK_MEMBERS = [
-  { id: 1, name: '山田 太郎', role: '班長・全体企画', email: 'yamada@example.com', tags: ['リーダー', '企画渉外'] },
-  { id: 2, name: '佐藤 花子', role: '広報リーダー', email: 'sato@example.com', tags: ['SNS運用', 'デザイン'] },
-  { id: 3, name: '鈴木 一郎', role: '技術サポート', email: 'suzuki@example.com', tags: ['Web担当', 'システム'] },
-  { id: 4, name: '田中 美咲', role: 'イベント運営', email: 'tanaka@example.com', tags: ['当日進行', 'マニュアル作成'] },
-  { id: 5, name: '高橋 健太', role: '会計・備品管理', email: 'takahashi@example.com', tags: ['予算', '備品調達'] },
+import { sheetApi } from '../api/sheetApi';
+
+const DEFAULT_MEMBERS = [
+  { id: 1, name: 'テストユーザー', role: 'テスト担当', email: 'test@example.com', tags: ['テスト'] }
 ];
 
 function MembersPage() {
+  const [members, setMembers] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+
+  React.useEffect(() => {
+    const fetchMembers = async () => {
+      try {
+        const data = await sheetApi.read('Members');
+        // GAS returns array of objects with keys from row 1.
+        // Map them to our component's expected structure if they differ slightly.
+        const mapped = data.map((row, index) => ({
+          id: row.id !== undefined ? row.id : index,
+          name: row['名前（なまえ）'] || row['名前'] || '名前未設定',
+          email: row['メールアドレス'] || '',
+          role: row['担当部署'] || '担当未設定',
+          tags: (row['担当部署'] || '').split(',').map(s => s.trim()).filter(Boolean)
+        }));
+        setMembers(mapped.length > 0 ? mapped : DEFAULT_MEMBERS);
+      } catch (err) {
+        console.error(err);
+        setError('メンバー情報の取得に失敗しました。GASの設定を確認してください。');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMembers();
+  }, []);
+
   return (
     <main className="main-content">
       <div className="container" style={{ padding: '2rem 1rem' }}>
@@ -18,8 +44,12 @@ function MembersPage() {
           <h1 style={{ margin: 0, fontSize: '1.75rem' }}>メンバー一覧</h1>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
-          {MOCK_MEMBERS.map(member => (
+        {loading && <div className="empty-state"><p>読み込み中...</p></div>}
+        {error && <div className="empty-state" style={{color:'red'}}><p>{error}</p></div>}
+
+        {!loading && !error && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
+          {members.map(member => (
             <div key={member.id} style={{ 
               backgroundColor: 'white', 
               borderRadius: '8px', 
@@ -80,6 +110,7 @@ function MembersPage() {
             </div>
           ))}
         </div>
+        )}
       </div>
     </main>
   );

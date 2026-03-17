@@ -2,18 +2,9 @@ import { useState, useEffect } from 'react'
 import { Search, Archive, FileText, Image as ImageIcon, Layout, Box, Loader2, AlertCircle, Plus, X, Trash2 } from 'lucide-react'
 import Papa from 'papaparse'
 
-// CSV_URL for fetching data
-const CSV_URL = import.meta.env.VITE_GOOGLE_SHEET_CSV_URL || '';
-// GAS_URL for posting data
-const GAS_URL = import.meta.env.VITE_GAS_API_URL || '';
+import { sheetApi } from '../api/sheetApi';
 
-const MOCK_DATA = [
-  { id: 1, title: '令和6年度 班構成・役割分担表', type: 'Spreadsheet', category: '管理', url: '#', description: '今年度の班員リストと各係の分担まとめです。' },
-  { id: 2, title: 'プロジェクト企画書テンプレート', type: 'Document', category: '企画', url: '#', description: '新規プロジェクトを立ち上げる際に使用するGoogleドキュメントのテンプレート。' },
-  { id: 3, title: '新歓用チラシデザイン（完成版）', type: 'Canva', category: '広報', url: '#', description: 'Canvaで作成された最新のチラシデザイン。印刷用。' },
-  { id: 4, title: 'マニュアル：GitHub Pagesでのサイト公開手順', type: 'PDF', category: '技術', url: '#', description: '非エンジニア向けにまとめたWebサイト公開のための手順書。' },
-  { id: 5, title: 'ロゴ素材一式', type: 'Image', category: '広報', url: '#', description: '各種SNSや印刷物で使える班の公式ロゴデータまとめ。' }
-];
+const DEFAULT_DATA = [];
 
 const CATEGORIES = ['すべて', '管理', '企画', '広報', '技術'];
 const RESOURCE_TYPES = ['ドキュメント', 'シート', 'Canva', 'PDF', '画像', 'その他'];
@@ -33,7 +24,8 @@ function getIconForType(type) {
 }
 
 function ResourcesPage() {
-  const [data, setData] = useState([]);
+  const [data, setData] = useState(DEFAULT_DATA);
+  const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -49,46 +41,35 @@ function ResourcesPage() {
     type: 'ドキュメント',
     category: '管理',
     url: '',
-    description: ''
+    description: '',
+    name: ''
   });
 
   const fetchData = async () => {
     setLoading(true);
-    if (!CSV_URL) {
-      console.log('CSV_URL is not set, using mock data.');
-      setData(MOCK_DATA);
-      setLoading(false);
-      return;
-    }
-
+    setError(null);
     try {
-      Papa.parse(CSV_URL, {
-        download: true,
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          if (results.errors.length > 0) {
-            console.error('CSV Parsing Errors:', results.errors);
-          }
-          const parsedData = results.data.map((row, index) => ({
-            id: index,
-            title: row['資料タイトル'] || row.title || row['タイトル'] || '無題の資料',
-            type: row['種類'] || row.type || 'Document',
-            category: row['カテゴリ'] || row.category || 'その他',
-            url: row['URL'] || row.url || '#',
-            description: row['説明'] || row['説明（簡単にどんなものなのか）'] || row.description || ''
-          }));
-          setData(parsedData);
-          setLoading(false);
-        },
-        error: (error) => {
-          console.error('Error fetching CSV:', error);
-          setError('データの読み込みに失敗しました。');
-          setLoading(false);
-        }
-      });
+      const [resourcesData, membersData] = await Promise.all([
+        sheetApi.read('Resources'),
+        sheetApi.read('Members')
+      ]);
+      
+      const parsedData = resourcesData.map((row, index) => ({
+        id: index,
+        title: row['資料タイトル'] || row.title || row['タイトル'] || '無題の資料',
+        type: row['種類'] || row.type || 'Document',
+        category: row['カテゴリ'] || row.category || 'その他',
+        url: row['URL'] || row.url || '#',
+        description: row['説明'] || row['説明（簡単にどんなものなのか）'] || row.description || '',
+        name: row['追加者'] || row.name || ''
+      }));
+      
+      setData(parsedData.reverse());
+      setMembers(membersData);
     } catch (err) {
-      setError(err.message);
+      console.error('Error fetching data:', err);
+      setError('データの読み込みに失敗しました。');
+    } finally {
       setLoading(false);
     }
   };
@@ -115,71 +96,51 @@ function ResourcesPage() {
     setSubmitError(null);
     setIsSubmitting(true);
 
-    if (!GAS_URL) {
-      setSubmitError('GASのURLが設定されていません。環境変数 VITE_GAS_API_URL を確認してください。');
-      setIsSubmitting(false);
-      return;
-    }
-
     try {
-      const response = await fetch(GAS_URL, {
-        method: 'POST',
-        // 'text/plain' is often needed for GAS CORS to prevent preflight if not fully configured
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(formData)
+      await sheetApi.add('Resources', {
+        '資料タイトル': formData.title,
+        '種類': formData.type,
+        'カテゴリ': formData.category,
+        'URL': formData.url,
+        '説明': formData.description,
+        '追加者': formData.name
       });
-
-      const result = await response.json();
-
-      if (result.status === 'success') {
-        setIsModalOpen(false);
-        setFormData({ title: '', type: 'ドキュメント', category: '管理', url: '', description: '' });
-        // Refresh data
-        fetchData();
-      } else {
-        setSubmitError(result.message || '追加に失敗しました。');
+      
+      // Auto-log activity
+      if (formData.name) {
+        await sheetApi.add('Activities', {
+          name: formData.name,
+          action: `新しい資料「${formData.title}」を追加しました`
+        });
       }
+
+      setIsModalOpen(false);
+      setFormData({ title: '', type: 'ドキュメント', category: '管理', url: '', description: '', name: '' });
+      fetchData();
     } catch (err) {
-      setSubmitError('通信エラーが発生しました: ' + err.message);
+      setSubmitError('追加に失敗しました: ' + err.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (e, id, title) => {
-    e.preventDefault(); // Prevent link navigation
+    e.preventDefault();
     e.stopPropagation();
 
     if (!window.confirm(`「${title}」を削除してもよろしいですか？\nこの操作は取り消せません。`)) {
       return;
     }
 
-    if (!GAS_URL) {
-      alert('GASのURLが設定されていません。削除できません。');
-      return;
-    }
-
     setIsSubmitting(true);
-    // In our CSV, data rows start at index 0, which corresponds to row 2 in the Spreadsheet (since row 1 is header).
-    // So rowNumber = index + 2. The `id` we set is exactly the array index.
-    const rowNumber = id + 2;
+    // Since we map with reverse(), we need the original ID. However we stored id in `parsedData` as the original index.
+    const rowNumber = id + 2; 
 
     try {
-      const response = await fetch(GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'delete', rowNumber })
-      });
-
-      const result = await response.json();
-
-      if (result.status === 'success') {
-        fetchData(); // Refresh the list
-      } else {
-        alert('削除に失敗しました: ' + (result.message || '不明なエラー'));
-      }
+      await sheetApi.delete('Resources', rowNumber);
+      fetchData();
     } catch (err) {
-      alert('通信エラーが発生しました: ' + err.message);
+      alert('削除に失敗しました: ' + err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -271,6 +232,7 @@ function ResourcesPage() {
                     <div className="card-content">
                       <h3 className="card-title">{item.title}</h3>
                       {item.description && <p className="card-description">{item.description}</p>}
+                      {item.name && <p style={{ fontSize: '0.75rem', color: 'var(--color-primary)', marginTop: '0.5rem', fontWeight: 500 }}>追加者: {item.name}</p>}
                     </div>
                   </a>
                 ))
@@ -303,6 +265,21 @@ function ResourcesPage() {
             )}
 
             <form onSubmit={handleAddSubmit}>
+              <div className="form-group">
+                <label className="form-label">追加者（名前） <span style={{ color: 'red' }}>*</span></label>
+                <select
+                  name="name"
+                  required
+                  className="form-select"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                >
+                  <option value="">選択してください</option>
+                  {members.map((m, i) => (
+                    <option key={i} value={m['名前（なまえ）'] || m['名前']}>{m['名前（なまえ）'] || m['名前']}</option>
+                  ))}
+                </select>
+              </div>
               <div className="form-group">
                 <label className="form-label">資料タイトル <span style={{ color: 'red' }}>*</span></label>
                 <input
